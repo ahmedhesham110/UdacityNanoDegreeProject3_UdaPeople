@@ -79,7 +79,15 @@ jobs:
           command: |
             cd frontend
             npm install
-            npm run test
+            mkdir -p ./reports/junit/
+            npm install --save-dev jest-junit jest-junit-reporter
+            ./node_modules/.bin/jest --ci --runInBand --reporters=default --reporters=jest-junit
+          environment:
+            JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
+      - store_test_results:
+          path: ./frontend/reports/junit/
+            #npm install
+            #npm run test
       - save_cache:
           paths: [frontend/node_modules]
           key: test-frontend
