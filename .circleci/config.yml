@@ -141,20 +141,21 @@ jobs:
           paths: [backend/node_modules]
           key: scan-backend
 
-  #deploy-infrastructure:
-    #docker:
-      # Docker image here that supports AWS CLI
-    #steps:
-      # Checkout code from git
-      #- run:
-          #name: Ensure back-end infrastructure exists
-          #command: |
-            #aws cloudformation deploy \
-              #--template-file .circleci/files/backend.yml \
-              #--tags project=your-tag \
-              # --stack-name "your back-end stack name with workflow id" \
-              # --parameter-overrides ID="your workflow id"  
-              #exit 1
+  deploy-infrastructure:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum -y install tar gzip
+      - run:
+          name: Ensure back-end infrastructure exists
+          command: |
+            aws cloudformation deploy \
+              --template-file .circleci/files/backend.yml \
+              --tags project=udaPeople \
+              --stack-name "udapeople-backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID:0:7}"  
+              
       #- run:
           #name: Ensure front-end infrastructure exist
           #command: |
@@ -320,11 +321,11 @@ workflows:
           requires: [build-backend]
       - scan-frontend:
           requires: [build-frontend]
-      #- deploy-infrastructure:
-          #requires: [test-frontend, test-backend, scan-frontend, scan-backend]
-          #filters:
-            #branches:
-              #only: [test-feature-branch]
+      - deploy-infrastructure:
+          requires: [test-frontend, test-backend, scan-frontend, scan-backend]
+          filters:
+            branches:
+              only: [main]
       #- configure-infrastructure:
           #requires: [deploy-infrastructure]
       #- run-migrations:
