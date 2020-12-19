@@ -216,42 +216,72 @@ jobs:
             curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "successful_migration" https://api.memstash.io/values/${CIRCLE_WORKFLOW_ID}
      # Here's where you will add some code to rollback on failure      
 
-  #deploy-frontend:
-    #docker:
-      # Docker image here that supports AWS CLI
-    #steps:
-      # Checkout code from git
-      #- run:
-          #name: Install dependencies
-          #command: |
-            # your code here
-      #- run:
-          #name: Get backend url
-          #command: |
-            # your code here
-            #export API_URL="http://${BACKEND_IP}:3030"
-            #echo "${API_URL}"
-      #- run:
-          #name: Deploy frontend objects
-          #command: |
-            # your code here
+  deploy-frontend:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            curl -sL https://rpm.nodesource.com/setup_lts.x | bash -
+            yum -y install nodejs
+            yum -y install tar gzip
+      - attach_workspace:
+          at: ~/
+      - run:    
+          name: Get backend url
+          command: |
+            export BACKEND_IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+              --output text)
+            export API_URL="http://${BACKEND_IP}:3030"
+            echo API_URL="http://${BACKEND_IP}:3030" >> "frontend/.env"
+            cat frontend/.env
+      - run:
+          name: Deploy frontend 
+          command: |
+            cd frontend
+            npm install
+            npm run build
+            tar -czvf artifact-"${CIRCLE_WORKFLOW_ID:0:7}".tar.gz dist
+            cat .env
+            ls -la           
+            aws s3 sync dist s3://udapeople-${CIRCLE_WORKFLOW_ID:0:7}
       # Here's where you will add some code to rollback on failure      
                     
-  #deploy-backend:
-    #docker:
-      # Docker image here that supports Ansible
-    #steps:
-      # Checkout code from git
-      # Add ssh keys with fingerprint
-      # attach workspace
-      #- run:
-          #name: Install dependencies
-          #command: |
-            # your code here
-      #- run:
-          #name: Deploy backend
-          #command: |
-            # your code here
+  deploy-backend:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints: ["bf:ab:48:b6:64:f0:f6:9f:90:13:73:50:a6:88:ac:eb"]
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --update tar gzip ansible nodejs npm
+            pip install awscli
+      - run:
+          name: deploy backend
+          no_output_timeout: 30m
+          command: |
+            echo ENVIROMENT=development > "backend/.env"
+            echo TYPEORM_CONNECTION=postgres >> "backend/.env"
+            echo TYPEORM_MIGRATIONS_DIR=./src/migrations >> "backend/.env"
+            echo TYPEORM_ENTITIES=./src/modules/domain/**/*.entity.ts >> "backend/.env"
+            echo TYPEORM_MIGRATIONS=./src/migrations/*.ts >> "backend/.env"
+            echo TYPEORM_HOST=$TYPEORM_HOST >> "backend/.env"
+            echo TYPEORM_PORT=$TYPEORM_PORT >> "backend/.env"
+            echo TYPEORM_USERNAME=$TYPEORM_USERNAME >> "backend/.env"
+            echo TYPEORM_PASSWORD=$TYPEORM_PASSWORD >> "backend/.env"
+            echo TYPEORM_DATABASE=$TYPEORM_DATABASE >> "backend/.env"
+            tar -C backend -czvf artifact.tar.gz .
+            cd .circleci/ansible
+            ansible-playbook -i inventory.txt deploy-backend.yml
       # Here's where you will add some code to rollback on failure  
 
   #smoke-test:
@@ -334,10 +364,10 @@ workflows:
           requires: [deploy-infrastructure]
       - run-migrations:
           requires: [configure-infrastructure]
-      #- deploy-frontend:
-          #requires: [run-migrations]
-      #- deploy-backend:
-          #requires: [run-migrations]
+      - deploy-frontend:
+          requires: [run-migrations]
+      - deploy-backend:
+          requires: [run-migrations]
       #- smoke-test:
           #requires: [deploy-backend, deploy-frontend]
       #- cloudfront-update:
